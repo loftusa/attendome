@@ -21,32 +21,68 @@ Use existing sentence embedding transformers (e.g., Qwen3-Embedding-8B) to train
 ### Phase 2: Learned Embeddings
 Create compact learned embeddings to predict attention head behavior across ~10 different language models. This addresses the scalability issues of Phase 1 (learned KVs are too large) and enables deeper generalization insights.
 
-## Current Tasks
+## Getting Started
 
-1. **Identify well-understood attention heads** in open-source models (induction heads, copying heads)
-2. **Build classification datasets** for known attention head types:
-   - Start with binary classification ("is it an induction head?")
-   - Use induction head detection methods to create train/test splits
-3. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
+### Requirements
+- Python 3.12+
+- PyTorch, Transformers, NumPy, tqdm (managed via uv)
 
-## Methods
+### Installation
+```bash
+uv add torch transformers numpy tqdm
+```
+
+### Building Induction Heads Dataset
+Generate classification dataset for induction heads across multiple models:
+
+```bash
+# Basic usage with default models (gpt2, distilgpt2, DialoGPT-small)
+uv run experiments/build_induction_dataset.py
+
+# Advanced usage with custom models and parameters
+uv run experiments/build_induction_dataset.py \
+  --models gpt2 gpt2-medium EleutherAI/gpt-neo-125M \
+  --num-samples 2000 \
+  --seq-len 50 \
+  --batch-size 16 \
+  --high-threshold 0.5 \
+  --medium-threshold 0.2 \
+  --print-reports \
+  --save-individual
+```
+
+Results are saved to `results/induction_heads/` in JSON format with:
+- Individual model analyses (if `--save-individual`)
+- Combined dataset with metadata
+- Classification of heads as high/medium/low induction
+
+## Current Implementation
+
+### Dataset Module (`src/attendome/dataset/`)
+- **InductionHeadClassifier**: Computes induction scores and classifies attention heads
+- **ModelLoader**: Handles loading multiple transformer models with memory management
+- **Utilities**: Analysis, reporting, and data management functions
 
 ### Induction Head Detection
-Current method for computing induction scores using repeated sequences:
+The classifier uses repeated sequences to identify induction heads:
 
 ```python
-def compute_induction_score(
-    self,
-    model: PreTrainedModel,
-    tokenizer: PreTrainedTokenizer,
-    num_of_samples: int = 2000,
-    seq_len: int = 50,
-    batch_size: int = 16,
-) -> torch.Tensor:
-    # Creates random repetitive sequences and measures attention
-    # to positions that would indicate induction behavior
-    # Uses diagonal offset of -seq_len + 1 to check proper positions
+classifier = InductionHeadClassifier()
+results = classifier.analyze_model(model, tokenizer, "gpt2")
+classified_heads = results["classified_heads"]
 ```
+
+Key features:
+- Configurable classification thresholds
+- Batch processing for efficiency
+- Memory management for large models
+- Comprehensive analysis reports
+
+## Current Tasks
+
+1. ✅ **Build classification datasets** for induction heads
+2. **Extend to other head types** (copying heads, retrieval heads)
+3. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
 
 ## Resources
 
@@ -63,3 +99,10 @@ def compute_induction_score(
 ## Evaluation Strategy
 
 Measure embedding quality through attention head classification tasks - if our embeddings capture meaningful attention head properties, we should be able to classify heads by type (induction, copying, etc.) across different models.
+
+Metrics:
+
+- Induction-retrieval@k: given an induction head in model A, rank heads from all other models by embedding cosine; report recall.
+- Binary classification: logistic reg. on embeddings $\rightarrow$ F1 for induction vs non-induction.
+- Reconstruction: $\text{MSE}(\hat{A}, A)$ on held-out prompts.
+- Outlier score: mean reconstruction error per head; high-error tails flagged “non-embeddable’’.
