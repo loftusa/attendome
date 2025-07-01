@@ -29,7 +29,7 @@ Create compact learned embeddings to predict attention head behavior across ~10 
 
 ### Installation
 ```bash
-uv add torch transformers numpy tqdm
+uv sync
 ```
 
 ### Building Induction Heads Dataset
