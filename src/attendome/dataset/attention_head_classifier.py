@@ -21,9 +21,10 @@ class InductionHeadClassifier:
         self,
         model: PreTrainedModel,
         tokenizer: PreTrainedTokenizer,
-        num_of_samples: int = 2000,
+        num_of_samples: int = 2048,
         seq_len: int = 50,
         batch_size: int = 16,
+        save_random_repetitive_sequence: bool = False,
     ) -> List[List[float]]:
         """Compute induction scores for all attention heads in a model.
         
@@ -51,6 +52,8 @@ class InductionHeadClassifier:
         vocab_size = tokenizer.vocab_size
         random_sequence = torch.randint(1, vocab_size, (num_of_samples, seq_len))
         random_repetitive_sequence = torch.cat([random_sequence, random_sequence], dim=1)
+        if save_random_repetitive_sequence:
+            self.random_repetitive_sequence_ = random_repetitive_sequence
         
         model.eval()
         with torch.no_grad():
@@ -89,8 +92,8 @@ class InductionHeadClassifier:
     def classify_heads(
         self, 
         induction_scores: List[List[float]], 
-        high_threshold: float = 0.5,
-        medium_threshold: float = 0.2
+        high_threshold: float = 0.7,
+        medium_threshold: float = .35
     ) -> Dict[str, List[Dict[str, Any]]]:
         """Classify attention heads based on induction scores.
         

@@ -15,10 +15,15 @@ from attendome.dataset import InductionHeadClassifier, ModelLoader, save_results
 def main():
     parser = argparse.ArgumentParser(description="Build induction heads dataset")
     parser.add_argument(
-        "--models", 
-        nargs="+", 
-        default=["gpt2", "distilgpt2", "microsoft/DialoGPT-small"],
-        help="List of model names to analyze"
+        "--models",
+        nargs="+",
+        default=[
+            "Qwen/Qwen3-4B",
+            "Qwen/Qwen3-8B",
+            "meta-llama/Llama-3.1-8B-Instruct",
+            "google/gemma-3-12b-it",
+        ],
+        help="List of model names to analyze",
     )
     parser.add_argument(
         "--output-dir", 
@@ -28,7 +33,7 @@ def main():
     parser.add_argument(
         "--num-samples", 
         type=int, 
-        default=1000,
+        default=2048,
         help="Number of samples for induction score computation"
     )
     parser.add_argument(
@@ -51,13 +56,13 @@ def main():
     parser.add_argument(
         "--high-threshold", 
         type=float, 
-        default=0.5,
+        default=0.7,
         help="Threshold for high induction heads"
     )
     parser.add_argument(
         "--medium-threshold", 
         type=float, 
-        default=0.2,
+        default=0.5,
         help="Threshold for medium induction heads"
     )
     parser.add_argument(
