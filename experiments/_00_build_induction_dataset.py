@@ -62,7 +62,7 @@ def main():
     parser.add_argument(
         "--medium-threshold", 
         type=float, 
-        default=0.5,
+        default=0.35,
         help="Threshold for medium induction heads"
     )
     parser.add_argument(
@@ -78,8 +78,8 @@ def main():
     )
     parser.add_argument(
         "--print-reports", 
-        action="store_true",
-        help="Print summary reports to console"
+        action="store_false",
+        help="Don't print summary reports to console (default: print reports)"
     )
     
     args = parser.parse_args()
