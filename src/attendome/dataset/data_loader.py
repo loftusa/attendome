@@ -4,6 +4,18 @@ from typing import List, Tuple, Optional, Dict, Any
 import torch
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 import gc
+from pydantic import BaseModel, Field
+
+
+class ModelInfo(BaseModel):
+    """Basic information about a transformer model."""
+    model_name: str
+    model_type: str = "unknown"
+    num_layers: Any = "unknown"
+    num_heads: Any = "unknown"
+    hidden_size: Any = "unknown"
+    vocab_size: Any = "unknown"
+    error: Optional[str] = None
 
 
 class ModelLoader:
@@ -133,29 +145,29 @@ class ModelLoader:
         if torch.cuda.is_available():
             torch.cuda.empty_cache()
     
-    def get_model_info(self, model_name: str) -> Dict[str, Any]:
+    def get_model_info(self, model_name: str) -> "ModelInfo":
         """Get basic information about a model without loading it.
         
         Args:
             model_name: HuggingFace model identifier
             
         Returns:
-            Dictionary with model configuration information
+            ModelInfo object with model configuration information
         """
         try:
             from transformers import AutoConfig
             config = AutoConfig.from_pretrained(model_name)
             
-            return {
-                "model_name": model_name,
-                "model_type": getattr(config, 'model_type', 'unknown'),
-                "num_layers": getattr(config, 'num_hidden_layers', 'unknown'),
-                "num_heads": getattr(config, 'num_attention_heads', 'unknown'),
-                "hidden_size": getattr(config, 'hidden_size', 'unknown'),
-                "vocab_size": getattr(config, 'vocab_size', 'unknown')
-            }
+            return ModelInfo(
+                model_name=model_name,
+                model_type=getattr(config, 'model_type', 'unknown'),
+                num_layers=getattr(config, 'num_hidden_layers', 'unknown'),
+                num_heads=getattr(config, 'num_attention_heads', 'unknown'),
+                hidden_size=getattr(config, 'hidden_size', 'unknown'),
+                vocab_size=getattr(config, 'vocab_size', 'unknown')
+            )
         except Exception as e:
-            return {
-                "model_name": model_name,
-                "error": str(e)
-            }
+            return ModelInfo(
+                model_name=model_name,
+                error=str(e)
+            )

@@ -5,7 +5,7 @@ import torch
 from unittest.mock import Mock, patch, MagicMock
 from typing import Dict, Any
 
-from attendome.dataset.data_loader import ModelLoader
+from attendome.dataset.data_loader import ModelLoader, ModelInfo
 
 
 class TestModelLoader:
@@ -251,16 +251,13 @@ class TestModelLoader:
         
         info = loader.get_model_info("gpt2")
         
-        expected_info = {
-            "model_name": "gpt2",
-            "model_type": "gpt2",
-            "num_layers": 12,
-            "num_heads": 12,
-            "hidden_size": 768,
-            "vocab_size": 50257
-        }
-        
-        assert info == expected_info
+        assert isinstance(info, ModelInfo)
+        assert info.model_name == "gpt2"
+        assert info.model_type == "gpt2"
+        assert info.num_layers == 12
+        assert info.num_heads == 12
+        assert info.hidden_size == 768
+        assert info.vocab_size == 50257
         mock_auto_config.from_pretrained.assert_called_once_with("gpt2")
     
     @patch('transformers.AutoConfig')
@@ -270,9 +267,10 @@ class TestModelLoader:
         
         info = loader.get_model_info("nonexistent-model")
         
-        assert info["model_name"] == "nonexistent-model"
-        assert "error" in info
-        assert "Model not found" in info["error"]
+        assert isinstance(info, ModelInfo)
+        assert info.model_name == "nonexistent-model"
+        assert info.error is not None
+        assert "Model not found" in info.error
     
     @patch('transformers.AutoConfig')
     def test_get_model_info_missing_attributes(self, mock_auto_config, loader):
@@ -291,12 +289,13 @@ class TestModelLoader:
         with patch('attendome.dataset.data_loader.getattr', side_effect=getattr_side_effect):
             info = loader.get_model_info("custom-model")
         
-        assert info["model_name"] == "custom-model"
-        assert info["model_type"] == "custom"
-        assert info["num_layers"] == "unknown"
-        assert info["num_heads"] == "unknown"
-        assert info["hidden_size"] == "unknown"
-        assert info["vocab_size"] == "unknown"
+        assert isinstance(info, ModelInfo)
+        assert info.model_name == "custom-model"
+        assert info.model_type == "custom"
+        assert info.num_layers == "unknown"
+        assert info.num_heads == "unknown"
+        assert info.hidden_size == "unknown"
+        assert info.vocab_size == "unknown"
     
     def test_device_handling_cuda(self):
         """Test device handling for CUDA device."""

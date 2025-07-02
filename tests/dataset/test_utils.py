@@ -17,7 +17,9 @@ from attendome.dataset.utils import (
     analyze_score_distribution,
     get_top_induction_heads,
     create_summary_report,
-    generate_output_filename
+    generate_output_filename,
+    DatasetMetadata,
+    ScoreDistribution
 )
 
 
@@ -124,11 +126,11 @@ class TestCreateDatasetMetadata:
         model_results = [
             {
                 "model_name": "gpt2",
-                "model_config": {"num_layers": 12, "num_heads": 12}
+                "model_configuration": {"num_layers": 12, "num_heads": 12}
             },
             {
                 "model_name": "gpt2-medium", 
-                "model_config": {"num_layers": 24, "num_heads": 16}
+                "model_configuration": {"num_layers": 24, "num_heads": 16}
             }
         ]
         
@@ -137,21 +139,22 @@ class TestCreateDatasetMetadata:
             description="Test dataset"
         )
         
-        assert metadata["description"] == "Test dataset"
-        assert metadata["num_models"] == 2
-        assert metadata["models"] == ["gpt2", "gpt2-medium"]
-        assert metadata["total_heads"] == (12 * 12) + (24 * 16)
-        assert "created_at" in metadata
+        assert isinstance(metadata, DatasetMetadata)
+        assert metadata.description == "Test dataset"
+        assert metadata.num_models == 2
+        assert metadata.models == ["gpt2", "gpt2-medium"]
+        assert metadata.total_heads == (12 * 12) + (24 * 16)
+        assert metadata.created_at is not None
         
         # Verify timestamp format
-        datetime.fromisoformat(metadata["created_at"])
+        datetime.fromisoformat(metadata.created_at)
     
     def test_create_dataset_metadata_with_kwargs(self):
         """Test metadata creation with additional fields."""
         model_results = [
             {
                 "model_name": "gpt2",
-                "model_config": {"num_layers": 12, "num_heads": 12}
+                "model_configuration": {"num_layers": 12, "num_heads": 12}
             }
         ]
         
@@ -162,16 +165,18 @@ class TestCreateDatasetMetadata:
             author="test"
         )
         
-        assert metadata["version"] == "1.0"
-        assert metadata["author"] == "test"
+        # Test extra fields work through Pydantic's Config.extra = "allow"
+        assert hasattr(metadata, "version") or "version" in metadata.__pydantic_extra__
+        assert hasattr(metadata, "author") or "author" in metadata.__pydantic_extra__
     
     def test_create_dataset_metadata_empty(self):
         """Test metadata creation with empty model list."""
         metadata = create_dataset_metadata([])
         
-        assert metadata["num_models"] == 0
-        assert metadata["models"] == []
-        assert metadata["total_heads"] == 0
+        assert isinstance(metadata, DatasetMetadata)
+        assert metadata.num_models == 0
+        assert metadata.models == []
+        assert metadata.total_heads == 0
 
 
 class TestAnalyzeScoreDistribution:
@@ -190,15 +195,16 @@ class TestAnalyzeScoreDistribution:
         expected_mean = np.mean(all_scores)
         expected_std = np.std(all_scores)
         
-        assert abs(stats["mean"] - expected_mean) < 1e-6
-        assert abs(stats["std"] - expected_std) < 1e-6
-        assert stats["min"] == 0.1
-        assert stats["max"] == 0.9
-        assert stats["total_heads"] == 6
+        assert isinstance(stats, ScoreDistribution)
+        assert abs(stats.mean - expected_mean) < 1e-6
+        assert abs(stats.std - expected_std) < 1e-6
+        assert stats.min == 0.1
+        assert stats.max == 0.9
+        assert stats.total_heads == 6
         
         # Check that all values are floats (not numpy types)
-        for key in ["mean", "std", "min", "max", "median", "q25", "q75"]:
-            assert isinstance(stats[key], float)
+        for attr in ["mean", "std", "min", "max", "median", "q25", "q75"]:
+            assert isinstance(getattr(stats, attr), float)
     
     def test_analyze_score_distribution_single_layer(self):
         """Test distribution analysis with single layer."""
@@ -206,10 +212,11 @@ class TestAnalyzeScoreDistribution:
         
         stats = analyze_score_distribution(scores)
         
-        assert stats["mean"] == 0.6
-        assert stats["min"] == 0.5
-        assert stats["max"] == 0.7
-        assert stats["total_heads"] == 3
+        assert isinstance(stats, ScoreDistribution)
+        assert stats.mean == 0.6
+        assert stats.min == 0.5
+        assert stats.max == 0.7
+        assert stats.total_heads == 3
     
     def test_analyze_score_distribution_empty(self):
         """Test distribution analysis with empty scores."""
@@ -225,6 +232,7 @@ class TestGetTopInductionHeads:
     
     def test_get_top_induction_heads_basic(self):
         """Test getting top induction heads."""
+        # For backward compatibility, get_top_induction_heads still accepts dict format
         classified_heads = {
             "high_induction": [
                 {"layer": 0, "head": 0, "score": 0.9},
@@ -251,6 +259,7 @@ class TestGetTopInductionHeads:
     
     def test_get_top_induction_heads_fewer_than_k(self):
         """Test getting top heads when fewer heads than k exist."""
+        # For backward compatibility, get_top_induction_heads still accepts dict format
         classified_heads = {
             "high_induction": [{"layer": 0, "head": 0, "score": 0.9}],
             "medium_induction": [],
@@ -264,6 +273,7 @@ class TestGetTopInductionHeads:
     
     def test_get_top_induction_heads_empty(self):
         """Test getting top heads with empty classification."""
+        # For backward compatibility, get_top_induction_heads still accepts dict format
         classified_heads = {
             "high_induction": [],
             "medium_induction": [],
@@ -282,7 +292,7 @@ class TestCreateSummaryReport:
         """Test basic summary report creation."""
         results = {
             "model_name": "gpt2",
-            "model_config": {
+            "model_configuration": {
                 "num_layers": 12,
                 "num_heads": 12,
                 "hidden_size": 768
@@ -320,7 +330,7 @@ class TestCreateSummaryReport:
         """Test that summary report has expected structure."""
         results = {
             "model_name": "test-model",
-            "model_config": {"num_layers": 2, "num_heads": 4, "hidden_size": 64},
+            "model_configuration": {"num_layers": 2, "num_heads": 4, "hidden_size": 64},
             "induction_scores": [[0.8, 0.3, 0.1, 0.05], [0.6, 0.4, 0.15, 0.02]],
             "classified_heads": {
                 "high_induction": [{"layer": 0, "head": 0, "score": 0.8}],

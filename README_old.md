@@ -25,7 +25,7 @@ Create compact learned embeddings to predict attention head behavior across ~10 
 
 ### Requirements
 - Python 3.12+
-- PyTorch, Transformers, NumPy, Pydantic, tqdm (managed via uv)
+- PyTorch, Transformers, NumPy, tqdm (managed via uv)
 
 ### Installation
 ```bash
@@ -68,23 +68,9 @@ Results are saved to `results/induction_heads/` in JSON/pickle format with:
 ## Current Implementation
 
 ### Dataset Module (`src/attendome/dataset/`)
-- **InductionHeadClassifier**: Computes induction scores and classifies attention heads using validated Pydantic models
-- **ModelLoader**: Handles loading multiple transformer models with memory management and type-safe model information
-- **Utilities**: Analysis, reporting, and data management functions with structured metadata models
-
-### Data Structures (Pydantic Models)
-The codebase uses validated Pydantic models for type safety and data integrity:
-
-- **`ModelConfig`**: Transformer model architecture configuration (layers, heads, hidden size)
-- **`AttentionHead`**: Individual attention head with layer, head index, and induction score
-- **`ClassifiedHeads`**: Grouped attention heads by induction score categories (high/medium/low)
-- **`AnalysisResults`**: Complete model analysis results with metadata and classifications
-- **`AnalysisParams`**: Analysis parameters with validation (samples, sequence length, thresholds)
-- **`ModelInfo`**: Basic model information from the model loader
-- **`DatasetMetadata`**: Metadata for multi-model analysis datasets
-- **`ScoreDistribution`**: Statistical analysis of induction score distributions
-
-All models provide automatic validation, serialization, and structured access with backward compatibility for dictionary formats.
+- **InductionHeadClassifier**: Computes induction scores and classifies attention heads
+- **ModelLoader**: Handles loading multiple transformer models with memory management
+- **Utilities**: Analysis, reporting, and data management functions
 
 ### Induction Head Detection
 The classifier identifies induction heads using repeated token sequences and diagonal attention patterns:
@@ -93,7 +79,7 @@ The classifier identifies induction heads using repeated token sequences and dia
 # Basic usage
 classifier = InductionHeadClassifier(device="cuda")
 results = classifier.analyze_model(model, tokenizer, "gpt2")
-classified_heads = results.classified_heads  # Pydantic ClassifiedHeads model
+classified_heads = results["classified_heads"]
 
 # Advanced configuration
 results = classifier.analyze_model(
@@ -103,18 +89,9 @@ results = classifier.analyze_model(
     batch_size=16,          # Processing batch size
 )
 
-# Access typed results with validation
-print(f"Model: {results.model_name}")
-print(f"Architecture: {results.model_configuration.num_layers} layers")
-print(f"High induction heads: {len(results.classified_heads.high_induction)}")
-
-# Individual head access with type safety
-for head in results.classified_heads.high_induction:
-    print(f"Layer {head.layer}, Head {head.head}: {head.score:.3f}")
-
 # Custom classification thresholds
 classified = classifier.classify_heads(
-    results.induction_scores,
+    results["induction_scores"],
     high_threshold=0.7,     # High induction heads
     medium_threshold=0.35   # Medium induction heads
 )
@@ -122,19 +99,16 @@ classified = classifier.classify_heads(
 
 Key features:
 - **Attention Pattern Analysis**: Uses diagonal attention on repeated sequences to compute induction scores
-- **Type-Safe Models**: Pydantic models for automatic data validation and structured access
 - **Configurable Thresholds**: Customizable classification boundaries (default: 0.7/0.35)
 - **Batch Processing**: Memory-efficient processing with configurable batch sizes
-- **Statistical Analysis**: Score distributions, percentiles, and ranking metrics with validated data structures
+- **Statistical Analysis**: Score distributions, percentiles, and ranking metrics
 - **Multi-format Output**: JSON and pickle support for results storage
-- **Backward Compatibility**: Functions accept both dict and Pydantic model formats
 
 ## Current Tasks
 
-1. ✅ **Build classification datasets** for induction heads with validated data structures
-2. ✅ **Integrate Pydantic models** for type safety and data validation
-3. **Extend to other head types** (copying heads, retrieval heads)
-4. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
+1. ✅ **Build classification datasets** for induction heads
+2. **Extend to other head types** (copying heads, retrieval heads)
+3. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
 
 ## Resources
 
@@ -150,26 +124,11 @@ Key features:
 
 ## Evaluation Strategy
 
-Measure embedding quality through attention head classification and retrieval tasks across models. The evaluation framework includes both supervised classification and unsupervised similarity metrics.
+Measure embedding quality through attention head classification tasks - if our embeddings capture meaningful attention head properties, we should be able to classify heads by type (induction, copying, etc.) across different models.
 
-### Classification Metrics
-- **Precision/Recall**: For induction head detection within each model using configurable thresholds
-- **Cross-model F1**: Binary classification of induction vs non-induction heads using learned embeddings
-- **Multi-class Classification**: Extending to copying heads, retrieval heads, and other attention patterns
+Metrics:
 
-### Retrieval Metrics  
-- **Induction-retrieval@k**: Given an induction head in model A, rank all heads from other models by embedding similarity; measure recall@k for finding corresponding induction heads
-- **Mean Reciprocal Rank (MRR)**: Average of reciprocal ranks for true positive retrievals
-- **Top-k Accuracy**: Percentage of queries where the correct head type appears in top-k results
-
-### Reconstruction Metrics
-- **Attention MSE**: $\text{MSE}(\hat{A}, A)$ between predicted and actual attention patterns on held-out sequences
-- **Pattern Correlation**: Pearson correlation between predicted and ground-truth attention weights
-- **Outlier Detection**: Mean reconstruction error per head to identify "non-embeddable" attention patterns
-
-### Current Statistical Analysis
-The implementation provides comprehensive analysis including:
-- Score distribution statistics (mean, std, percentiles, min/max)
-- Head classification counts and percentages across models
-- Top-k ranking of induction heads by score
-- Cross-model comparison and aggregation statistics
+- Induction-retrieval@k: given an induction head in model A, rank heads from all other models by embedding cosine; report recall.
+- Binary classification: logistic reg. on embeddings $\rightarrow$ F1 for induction vs non-induction.
+- Reconstruction: $\text{MSE}(\hat{A}, A)$ on held-out prompts.
+- Outlier score: mean reconstruction error per head; high-error tails flagged “non-embeddable’’.

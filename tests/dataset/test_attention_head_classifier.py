@@ -5,7 +5,13 @@ import torch
 import numpy as np
 from unittest.mock import Mock, patch, MagicMock
 
-from attendome.dataset.attention_head_classifier import InductionHeadClassifier
+from attendome.dataset.attention_head_classifier import (
+    InductionHeadClassifier,
+    AttentionHead,
+    ClassifiedHeads,
+    AnalysisResults,
+    ModelConfig
+)
 
 
 class TestInductionHeadClassifier:
@@ -101,18 +107,18 @@ class TestInductionHeadClassifier:
         )
         
         # Check high induction heads (0.8, 0.6 >= 0.5)
-        assert len(classified["high_induction"]) == 2
-        high_scores = [h["score"] for h in classified["high_induction"]]
+        assert len(classified.high_induction) == 2
+        high_scores = [h.score for h in classified.high_induction]
         assert all(score >= 0.5 for score in high_scores)
         
         # Check medium induction heads (0.3, 0.4 >= 0.2 and < 0.5)
-        assert len(classified["medium_induction"]) == 2
-        medium_scores = [h["score"] for h in classified["medium_induction"]]
+        assert len(classified.medium_induction) == 2
+        medium_scores = [h.score for h in classified.medium_induction]
         assert all(0.2 <= score < 0.5 for score in medium_scores)
         
         # Check low induction heads (0.1, 0.05, 0.15, 0.02 < 0.2)
-        assert len(classified["low_induction"]) == 4
-        low_scores = [h["score"] for h in classified["low_induction"]]
+        assert len(classified.low_induction) == 4
+        low_scores = [h.score for h in classified.low_induction]
         assert all(score < 0.2 for score in low_scores)
     
     def test_classify_heads_structure(self, classifier):
@@ -121,14 +127,13 @@ class TestInductionHeadClassifier:
         
         classified = classifier.classify_heads(scores)
         
-        for category in ["high_induction", "medium_induction", "low_induction"]:
-            for head in classified[category]:
-                assert "layer" in head
-                assert "head" in head
-                assert "score" in head
-                assert isinstance(head["layer"], int)
-                assert isinstance(head["head"], int)
-                assert isinstance(head["score"], float)
+        # Test all categories
+        all_heads = classified.high_induction + classified.medium_induction + classified.low_induction
+        for head in all_heads:
+            assert isinstance(head, AttentionHead)
+            assert isinstance(head.layer, int)
+            assert isinstance(head.head, int)
+            assert isinstance(head.score, float)
     
     def test_analyze_model_integration(self, classifier, mock_model, mock_tokenizer):
         """Test complete model analysis workflow."""
@@ -146,17 +151,17 @@ class TestInductionHeadClassifier:
             )
         
         # Check results structure
-        assert "model_name" in results
-        assert "model_config" in results
-        assert "induction_scores" in results
-        assert "classified_heads" in results
-        assert "analysis_params" in results
+        assert isinstance(results, AnalysisResults)
+        assert results.model_name == "test-model"
+        assert isinstance(results.model_configuration, ModelConfig)
+        assert isinstance(results.induction_scores, list)
+        assert isinstance(results.classified_heads, ClassifiedHeads)
         
         # Check model config
-        config = results["model_config"]
-        assert config["num_layers"] == 2
-        assert config["num_heads"] == 4
-        assert config["hidden_size"] == 64
+        config = results.model_configuration
+        assert config.num_layers == 2
+        assert config.num_heads == 4
+        assert config.hidden_size == 64
         
         # Check that model was moved to device
         mock_model.to.assert_called_with("cpu")
@@ -196,14 +201,14 @@ class TestInductionHeadClassifier:
         )
         
         # Verify threshold logic
-        for head in classified["high_induction"]:
-            assert head["score"] >= high_thresh
+        for head in classified.high_induction:
+            assert head.score >= high_thresh
         
-        for head in classified["medium_induction"]:
-            assert med_thresh <= head["score"] < high_thresh
+        for head in classified.medium_induction:
+            assert med_thresh <= head.score < high_thresh
             
-        for head in classified["low_induction"]:
-            assert head["score"] < med_thresh
+        for head in classified.low_induction:
+            assert head.score < med_thresh
     
     def test_empty_scores(self, classifier):
         """Test handling of empty score lists."""
@@ -211,9 +216,9 @@ class TestInductionHeadClassifier:
         
         classified = classifier.classify_heads(scores)
         
-        assert len(classified["high_induction"]) == 0
-        assert len(classified["medium_induction"]) == 0  
-        assert len(classified["low_induction"]) == 0
+        assert len(classified.high_induction) == 0
+        assert len(classified.medium_induction) == 0  
+        assert len(classified.low_induction) == 0
     
     def test_attention_implementation_restoration(self, classifier, mock_model, mock_tokenizer):
         """Test that attention implementation is properly restored."""

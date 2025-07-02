@@ -4,6 +4,47 @@ from typing import List, Dict, Any, Optional
 import torch
 from transformers import PreTrainedModel, PreTrainedTokenizer
 from tqdm import tqdm
+from pydantic import BaseModel, Field
+
+
+class ModelConfig(BaseModel):
+    """Configuration information for a transformer model."""
+    num_layers: int
+    num_heads: int
+    hidden_size: int
+
+
+class AttentionHead(BaseModel):
+    """Represents an attention head with its position and score."""
+    layer: int
+    head: int
+    score: float
+
+
+class ClassifiedHeads(BaseModel):
+    """Classification results for attention heads."""
+    high_induction: List[AttentionHead] = []
+    medium_induction: List[AttentionHead] = []
+    low_induction: List[AttentionHead] = []
+
+
+class AnalysisParams(BaseModel):
+    """Parameters used for induction head analysis."""
+    num_of_samples: int = 2048
+    seq_len: int = 50
+    batch_size: int = 16
+    save_random_repetitive_sequence: bool = False
+    high_threshold: float = 0.7
+    medium_threshold: float = 0.35
+
+
+class AnalysisResults(BaseModel):
+    """Complete analysis results for a transformer model."""
+    model_name: str
+    model_configuration: ModelConfig
+    induction_scores: List[List[float]]
+    classified_heads: ClassifiedHeads
+    analysis_params: AnalysisParams
 
 
 class InductionHeadClassifier:
@@ -94,7 +135,7 @@ class InductionHeadClassifier:
         induction_scores: List[List[float]], 
         high_threshold: float = 0.7,
         medium_threshold: float = .35
-    ) -> Dict[str, List[Dict[str, Any]]]:
+    ) -> ClassifiedHeads:
         """Classify attention heads based on induction scores.
         
         Args:
@@ -103,30 +144,28 @@ class InductionHeadClassifier:
             medium_threshold: Threshold for medium induction heads
             
         Returns:
-            Dictionary with classified heads by category
+            ClassifiedHeads object with categorized attention heads
         """
-        classified_heads = {
-            "high_induction": [],
-            "medium_induction": [], 
-            "low_induction": []
-        }
+        high_induction = []
+        medium_induction = []
+        low_induction = []
         
         for layer_idx, layer_scores in enumerate(induction_scores):
             for head_idx, score in enumerate(layer_scores):
-                head_info = {
-                    "layer": layer_idx,
-                    "head": head_idx, 
-                    "score": score
-                }
+                head = AttentionHead(layer=layer_idx, head=head_idx, score=score)
                 
                 if score >= high_threshold:
-                    classified_heads["high_induction"].append(head_info)
+                    high_induction.append(head)
                 elif score >= medium_threshold:
-                    classified_heads["medium_induction"].append(head_info)
+                    medium_induction.append(head)
                 else:
-                    classified_heads["low_induction"].append(head_info)
+                    low_induction.append(head)
         
-        return classified_heads
+        return ClassifiedHeads(
+            high_induction=high_induction,
+            medium_induction=medium_induction,
+            low_induction=low_induction
+        )
     
     def analyze_model(
         self,
@@ -134,7 +173,7 @@ class InductionHeadClassifier:
         tokenizer: PreTrainedTokenizer,
         model_name: str,
         **kwargs
-    ) -> Dict[str, Any]:
+    ) -> AnalysisResults:
         """Complete analysis of a model's attention heads.
         
         Args:
@@ -152,20 +191,30 @@ class InductionHeadClassifier:
         # Compute induction scores
         induction_scores = self.compute_induction_score(model, tokenizer, **kwargs)
         
+        # Extract thresholds from kwargs if provided
+        high_threshold = kwargs.get('high_threshold', 0.7)
+        medium_threshold = kwargs.get('medium_threshold', 0.35)
+        
         # Classify heads
-        classified_heads = self.classify_heads(induction_scores)
+        classified_heads = self.classify_heads(induction_scores, high_threshold, medium_threshold)
+        
+        # Create model config
+        model_configuration = ModelConfig(
+            num_layers=model.config.num_hidden_layers,
+            num_heads=model.config.num_attention_heads,
+            hidden_size=model.config.hidden_size
+        )
+        
+        # Create analysis params
+        analysis_params = AnalysisParams(**kwargs)
         
         # Compile results
-        results = {
-            "model_name": model_name,
-            "model_config": {
-                "num_layers": model.config.num_hidden_layers,
-                "num_heads": model.config.num_attention_heads,
-                "hidden_size": model.config.hidden_size
-            },
-            "induction_scores": induction_scores,
-            "classified_heads": classified_heads,
-            "analysis_params": kwargs
-        }
+        results = AnalysisResults(
+            model_name=model_name,
+            model_configuration=model_configuration,
+            induction_scores=induction_scores,
+            classified_heads=classified_heads,
+            analysis_params=analysis_params
+        )
         
         return results
