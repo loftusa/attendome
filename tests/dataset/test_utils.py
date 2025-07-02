@@ -126,11 +126,11 @@ class TestCreateDatasetMetadata:
         model_results = [
             {
                 "model_name": "gpt2",
-                "model_configuration": {"num_layers": 12, "num_heads": 12}
+                "model_config": {"num_layers": 12, "num_heads": 12}
             },
             {
                 "model_name": "gpt2-medium", 
-                "model_configuration": {"num_layers": 24, "num_heads": 16}
+                "model_config": {"num_layers": 24, "num_heads": 16}
             }
         ]
         
@@ -154,7 +154,7 @@ class TestCreateDatasetMetadata:
         model_results = [
             {
                 "model_name": "gpt2",
-                "model_configuration": {"num_layers": 12, "num_heads": 12}
+                "model_config": {"num_layers": 12, "num_heads": 12}
             }
         ]
         
@@ -232,7 +232,6 @@ class TestGetTopInductionHeads:
     
     def test_get_top_induction_heads_basic(self):
         """Test getting top induction heads."""
-        # For backward compatibility, get_top_induction_heads still accepts dict format
         classified_heads = {
             "high_induction": [
                 {"layer": 0, "head": 0, "score": 0.9},
@@ -259,7 +258,6 @@ class TestGetTopInductionHeads:
     
     def test_get_top_induction_heads_fewer_than_k(self):
         """Test getting top heads when fewer heads than k exist."""
-        # For backward compatibility, get_top_induction_heads still accepts dict format
         classified_heads = {
             "high_induction": [{"layer": 0, "head": 0, "score": 0.9}],
             "medium_induction": [],
@@ -273,7 +271,6 @@ class TestGetTopInductionHeads:
     
     def test_get_top_induction_heads_empty(self):
         """Test getting top heads with empty classification."""
-        # For backward compatibility, get_top_induction_heads still accepts dict format
         classified_heads = {
             "high_induction": [],
             "medium_induction": [],

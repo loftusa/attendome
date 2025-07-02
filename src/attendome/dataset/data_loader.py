@@ -4,10 +4,11 @@ from typing import List, Tuple, Optional, Dict, Any
 import torch
 from transformers import AutoModel, AutoTokenizer, PreTrainedModel, PreTrainedTokenizer
 import gc
-from pydantic import BaseModel, Field
+from dataclasses import dataclass
 
 
-class ModelInfo(BaseModel):
+@dataclass
+class ModelInfo:
     """Basic information about a transformer model."""
     model_name: str
     model_type: str = "unknown"

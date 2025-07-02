@@ -6,8 +6,8 @@ import os
 from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
 import numpy as np
-from pydantic import BaseModel, Field, ConfigDict
-from .attention_head_classifier import ClassifiedHeads
+from pydantic import BaseModel, ConfigDict
+from dataclasses import dataclass
 
 
 def save_results(
@@ -101,7 +101,8 @@ def create_dataset_metadata(
     )
 
 
-class ScoreDistribution(BaseModel):
+@dataclass
+class ScoreDistribution:
     """Statistical analysis of induction scores."""
     mean: float
     std: float
@@ -141,29 +142,21 @@ def analyze_score_distribution(
 
 
 def get_top_induction_heads(
-    classified_heads: Union[Dict[str, List[Dict[str, Any]]], ClassifiedHeads],
+    classified_heads: Dict[str, List[Dict[str, Any]]],
     top_k: int = 10
 ) -> List[Dict[str, Any]]:
     """Get the top-k induction heads by score.
     
     Args:
-        classified_heads: Dictionary or ClassifiedHeads object from InductionHeadClassifier
+        classified_heads: Dictionary of classified heads from InductionHeadClassifier
         top_k: Number of top heads to return
         
     Returns:
         List of top induction heads sorted by score
     """
     all_heads = []
-    
-    if isinstance(classified_heads, ClassifiedHeads):
-        # Handle Pydantic model
-        all_heads.extend([{"layer": h.layer, "head": h.head, "score": h.score} for h in classified_heads.high_induction])
-        all_heads.extend([{"layer": h.layer, "head": h.head, "score": h.score} for h in classified_heads.medium_induction])
-        all_heads.extend([{"layer": h.layer, "head": h.head, "score": h.score} for h in classified_heads.low_induction])
-    else:
-        # Handle dictionary format (backward compatibility)
-        for category in ["high_induction", "medium_induction", "low_induction"]:
-            all_heads.extend(classified_heads.get(category, []))
+    for category in ["high_induction", "medium_induction", "low_induction"]:
+        all_heads.extend(classified_heads.get(category, []))
     
     # Sort by score and return top k
     sorted_heads = sorted(all_heads, key=lambda x: x["score"], reverse=True)
@@ -186,35 +179,20 @@ def create_summary_report(results: Union[Dict[str, Any], "AnalysisResults"]) -> 
         config = results.model_configuration
         classified = results.classified_heads
         induction_scores = results.induction_scores
-        
-        total_heads = config.num_layers * config.num_heads
-        high_count = len(classified.high_induction)
-        medium_count = len(classified.medium_induction)
-        low_count = len(classified.low_induction)
     else:
         # Dictionary format
         model_name = results["model_name"]
         config = results.get("model_config", results.get("model_configuration", {}))
         classified = results["classified_heads"]
         induction_scores = results["induction_scores"]
-        
-        total_heads = config["num_layers"] * config["num_heads"]
-        high_count = len(classified["high_induction"])
-        medium_count = len(classified["medium_induction"])
-        low_count = len(classified["low_induction"])
+    
+    total_heads = config["num_layers"] * config["num_heads"]
+    high_count = len(classified["high_induction"])
+    medium_count = len(classified["medium_induction"])
+    low_count = len(classified["low_induction"])
     
     # Get score statistics
     score_stats = analyze_score_distribution(induction_scores)
-    
-    # Handle config format differences
-    if hasattr(config, "num_layers"):
-        # Pydantic model
-        num_layers = config.num_layers
-        num_heads = config.num_heads
-    else:
-        # Dictionary format
-        num_layers = config["num_layers"]
-        num_heads = config["num_heads"]
     
     # Create report
     report = f"""
@@ -222,7 +200,7 @@ Induction Head Analysis Report
 =============================
 
 Model: {model_name}
-Architecture: {num_layers} layers, {num_heads} heads per layer
+Architecture: {config["num_layers"]} layers, {config["num_heads"]} heads per layer
 Total attention heads: {total_heads}
 
 Classification Results:

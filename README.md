@@ -68,23 +68,9 @@ Results are saved to `results/induction_heads/` in JSON/pickle format with:
 ## Current Implementation
 
 ### Dataset Module (`src/attendome/dataset/`)
-- **InductionHeadClassifier**: Computes induction scores and classifies attention heads using validated Pydantic models
-- **ModelLoader**: Handles loading multiple transformer models with memory management and type-safe model information
-- **Utilities**: Analysis, reporting, and data management functions with structured metadata models
-
-### Data Structures (Pydantic Models)
-The codebase uses validated Pydantic models for type safety and data integrity:
-
-- **`ModelConfig`**: Transformer model architecture configuration (layers, heads, hidden size)
-- **`AttentionHead`**: Individual attention head with layer, head index, and induction score
-- **`ClassifiedHeads`**: Grouped attention heads by induction score categories (high/medium/low)
-- **`AnalysisResults`**: Complete model analysis results with metadata and classifications
-- **`AnalysisParams`**: Analysis parameters with validation (samples, sequence length, thresholds)
-- **`ModelInfo`**: Basic model information from the model loader
-- **`DatasetMetadata`**: Metadata for multi-model analysis datasets
-- **`ScoreDistribution`**: Statistical analysis of induction score distributions
-
-All models provide automatic validation, serialization, and structured access with backward compatibility for dictionary formats.
+- **InductionHeadClassifier**: Computes induction scores and classifies attention heads
+- **ModelLoader**: Handles loading multiple transformer models with memory management
+- **Utilities**: Analysis, reporting, and data management functions
 
 ### Induction Head Detection
 The classifier identifies induction heads using repeated token sequences and diagonal attention patterns:
@@ -93,7 +79,7 @@ The classifier identifies induction heads using repeated token sequences and dia
 # Basic usage
 classifier = InductionHeadClassifier(device="cuda")
 results = classifier.analyze_model(model, tokenizer, "gpt2")
-classified_heads = results.classified_heads  # Pydantic ClassifiedHeads model
+classified_heads = results.classified_heads
 
 # Advanced configuration
 results = classifier.analyze_model(
@@ -103,14 +89,14 @@ results = classifier.analyze_model(
     batch_size=16,          # Processing batch size
 )
 
-# Access typed results with validation
+# Access results
 print(f"Model: {results.model_name}")
-print(f"Architecture: {results.model_configuration.num_layers} layers")
-print(f"High induction heads: {len(results.classified_heads.high_induction)}")
+print(f"Architecture: {results.model_configuration['num_layers']} layers")
+print(f"High induction heads: {len(results.classified_heads['high_induction'])}")
 
-# Individual head access with type safety
-for head in results.classified_heads.high_induction:
-    print(f"Layer {head.layer}, Head {head.head}: {head.score:.3f}")
+# Individual head access
+for head in results.classified_heads["high_induction"]:
+    print(f"Layer {head['layer']}, Head {head['head']}: {head['score']:.3f}")
 
 # Custom classification thresholds
 classified = classifier.classify_heads(
@@ -122,19 +108,17 @@ classified = classifier.classify_heads(
 
 Key features:
 - **Attention Pattern Analysis**: Uses diagonal attention on repeated sequences to compute induction scores
-- **Type-Safe Models**: Pydantic models for automatic data validation and structured access
+- **Validated Results**: Structured output with automatic serialization for analysis results
 - **Configurable Thresholds**: Customizable classification boundaries (default: 0.7/0.35)
 - **Batch Processing**: Memory-efficient processing with configurable batch sizes
-- **Statistical Analysis**: Score distributions, percentiles, and ranking metrics with validated data structures
+- **Statistical Analysis**: Score distributions, percentiles, and ranking metrics
 - **Multi-format Output**: JSON and pickle support for results storage
-- **Backward Compatibility**: Functions accept both dict and Pydantic model formats
 
 ## Current Tasks
 
-1. ✅ **Build classification datasets** for induction heads with validated data structures
-2. ✅ **Integrate Pydantic models** for type safety and data validation
-3. **Extend to other head types** (copying heads, retrieval heads)
-4. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
+1. ✅ **Build classification datasets** for induction heads
+2. **Extend to other head types** (copying heads, retrieval heads)
+3. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
 
 ## Resources
 
@@ -173,3 +157,20 @@ The implementation provides comprehensive analysis including:
 - Head classification counts and percentages across models
 - Top-k ranking of induction heads by score
 - Cross-model comparison and aggregation statistics
+
+## Embedding Strategies for Attention Heads
+
+Below are potential *recipes* for converting an attention head `h` into a fixed-length vector embedding `e_h ∈ ℝᵈ`.  Each recipe specifies:
+
+* **Raw signal** – what data is extracted from the head.
+* **Alignment** – how the signal is normalised across different transformer architectures.
+* **Embedding** – the procedure that maps the signal to a `d`-dimensional vector.
+* **Pros / Cons** – why the method might succeed or fail.
+
+### 1&nbsp;·&nbsp;Frozen-encoder KV-cloning (Phase-1 baseline)
+* **Raw signal** Fit head-specific key/value tensors `(Kₕ, Vₕ)` so that, for a *frozen* sentence-encoder `S` with hidden states `z_p`, the reconstructed attention
+  $\hat A_h(p)=\operatorname{Softmax}(z_p K_h^\top/\sqrt{d_s}) V_h$ matches the true pattern `A_h(p)` over many prompts `p`.
+* **Alignment** All heads are projected into `S`'s token space, eliminating tokenizer mismatch.
+* **Embedding** Concatenate and flatten `[Kₕ, Vₕ]`, then compress via PCA/random projection to size `d`.
+* **Pros** Directly captures the *causal* mechanism that generates attention.
+* **Cons** High-dimensional before compression; requires an optimisation per head.
