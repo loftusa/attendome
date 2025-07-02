@@ -169,7 +169,7 @@ Below are potential *recipes* for converting an attention head `h` into a fixed-
 
 ### 1&nbsp;·&nbsp;Frozen-encoder KV-cloning (Phase-1 baseline)
 * **Raw signal** Fit head-specific key/value tensors `(Kₕ, Vₕ)` so that, for a *frozen* sentence-encoder `S` with hidden states `z_p`, the reconstructed attention
-  $\hat A_h(p)=\operatorname{Softmax}(z_p K_h^\top/\sqrt{d_s}) V_h$ matches the true pattern `A_h(p)` over many prompts `p`.
+  \(\hat A_h(p)=\operatorname{Softmax}(z_p K_h^\top/\sqrt{d_s}) V_h)\ matches the true pattern `A_h(p)` over many prompts `p`.
 * **Alignment** All heads are projected into `S`'s token space, eliminating tokenizer mismatch.
 * **Embedding** Concatenate and flatten `[Kₕ, Vₕ]`, then compress via PCA/random projection to size `d`.
 * **Pros** Directly captures the *causal* mechanism that generates attention.
