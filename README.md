@@ -133,8 +133,7 @@ Key features:
 
 1. ✅ **Build classification datasets** for induction heads with validated data structures
 2. ✅ **Integrate Pydantic models** for type safety and data validation
-3. **Extend to other head types** (copying heads, retrieval heads)
-4. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
+3. **Train prediction models**: Use sentence embeddings from Qwen3-Embedding-8B to predict attention patterns via shallow MLPs
 
 ## Resources
 
