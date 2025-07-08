@@ -14,11 +14,11 @@ from attendome.dataset.utils import save_results, generate_output_filename
 # %%
 # Configuration parameters
 models = ["gpt2", "distilgpt2"]
-num_sequences = 10  # Small for testing
-seq_len = 20        # Small for testing
+num_sequences = 20  # Increased for better RSA analysis
+seq_len = 16        # Reasonable size for testing
 max_heads_per_model = 4
 distance_metric = "euclidean"
-flatten_method = "upper_triangle"  # Options: "full", "upper_triangle", "diagonal"
+flatten_method = "upper_triangle"  # Fixed to work with causal attention
 clustering_method = "kmeans"       # Options: "kmeans", "hierarchical"
 n_clusters = 2
 device = None  # Auto-detect
@@ -218,6 +218,11 @@ print(f"\nTotal attention maps extracted: {len(all_attention_maps)}")
 print("Attention map summary:")
 for key, tensor in list(all_attention_maps.items())[:8]:  # Show first 8
     print(f"  {key}: shape {tensor.shape}")
+    # Check if attention maps contain actual values (not all zeros)
+    tensor_np = tensor.cpu().numpy() if hasattr(tensor, 'cpu') else np.array(tensor)
+    print(f"    Mean: {np.mean(tensor_np):.6f}, Max: {np.max(tensor_np):.6f}, Min: {np.min(tensor_np):.6f}")
+    if np.all(tensor_np == 0):
+        print(f"    WARNING: {key} contains all zeros!")
 
 # %%
 # Visualize attention maps in a grid
@@ -283,7 +288,7 @@ try:
             yticklabels=False
         )
         
-                 # Parse head information for title
+        # Parse head information for title
         title_parts = head_key.split('_')
         if len(title_parts) >= 4:
             model_name = title_parts[0]
@@ -373,21 +378,30 @@ except Exception as e:
     print(f"Error creating attention map visualization: {e}")
 
 # %%
-# Combine all classified heads for true label creation
+# Create classified heads ONLY for the extracted attention maps
+# This ensures the RSA analysis only considers heads we actually have data for
+extracted_head_keys = set(all_attention_maps.keys())
+print(f"Extracted attention maps for: {len(extracted_head_keys)} heads")
+
 combined_classified_heads = {
     "high_induction": [],
     "medium_induction": [],
     "low_induction": []
 }
 
+# Only include heads that we have attention maps for
 for model_name, classified in all_classified_heads.items():
     for category, heads in classified.items():
         for head_info in heads:
-            # Add model prefix to create global head identifier
-            global_head_info = head_info.copy()
-            combined_classified_heads[category].append(global_head_info)
+            # Create the key that would be used in attention maps
+            attention_map_key = f"{model_name}_layer_{head_info['layer']}_head_{head_info['head']}"
+            
+            # Only include if we have an attention map for this head
+            if attention_map_key in extracted_head_keys:
+                global_head_info = head_info.copy()
+                combined_classified_heads[category].append(global_head_info)
 
-print(f"Combined classifications:")
+print(f"Filtered classifications (only heads with attention maps):")
 for category, heads in combined_classified_heads.items():
     print(f"  {category}: {len(heads)} heads")
 
@@ -580,6 +594,100 @@ if save_results_flag:
     
     save_results(save_results_copy, filename, format="json")
     print(f"\nResults saved to: {filename}")
+
+# %%
+# t-SNE Visualization of All Attention Heads
+print("\n" + "="*50)
+print("t-SNE VISUALIZATION OF ATTENTION HEADS")
+print("="*50)
+
+from sklearn.manifold import TSNE
+import matplotlib.pyplot as plt
+
+# Prepare data for t-SNE
+print("Running t-SNE dimensionality reduction...")
+tsne = TSNE(n_components=2, random_state=42, perplexity=min(5, len(head_labels)-1))
+tsne_results = tsne.fit_transform(representation_matrix)
+
+# Create visualization
+fig, ax = plt.subplots(figsize=(12, 10))
+
+# Color points by induction vs non-induction
+colors = ['red' if label == 1 else 'blue' for label in true_labels]
+labels = ['Induction' if label == 1 else 'Non-induction' for label in true_labels]
+
+# Plot points
+scatter = ax.scatter(tsne_results[:, 0], tsne_results[:, 1], 
+                    c=colors, s=150, alpha=0.7, edgecolors='black', linewidth=1)
+
+# Add text labels for each point
+for i, (x, y) in enumerate(tsne_results):
+    # Create clean label from head info
+    head_label = head_labels[i]
+    head_type = "IND" if true_labels[i] == 1 else "NON"
+    cluster = cluster_labels[i]
+    
+    # Position text slightly offset from point
+    ax.annotate(f'{head_label}\n{head_type}(C{cluster})', 
+                xy=(x, y), xytext=(5, 5), textcoords='offset points',
+                fontsize=8, ha='left', va='bottom',
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', alpha=0.7))
+
+# Customize plot
+ax.set_title('t-SNE Visualization of Attention Head Representations', fontsize=16, fontweight='bold')
+ax.set_xlabel('t-SNE Component 1', fontsize=12)
+ax.set_ylabel('t-SNE Component 2', fontsize=12)
+ax.grid(True, alpha=0.3)
+
+# Custom legend
+from matplotlib.patches import Patch
+legend_elements = [
+    Patch(facecolor='red', alpha=0.7, label='Induction Heads'),
+    Patch(facecolor='blue', alpha=0.7, label='Non-Induction Heads')
+]
+ax.legend(handles=legend_elements, loc='upper right', fontsize=12)
+
+# Add statistics text
+stats_text = f"""
+Total Heads: {len(head_labels)}
+Induction: {np.sum(true_labels)} heads
+Non-induction: {len(true_labels) - np.sum(true_labels)} heads
+Clusters: {len(np.unique(cluster_labels))}
+"""
+ax.text(0.02, 0.98, stats_text, transform=ax.transAxes, fontsize=10,
+        verticalalignment='top', bbox=dict(boxstyle='round', facecolor='wheat', alpha=0.8))
+
+plt.tight_layout()
+plt.show()
+
+# Print analysis of t-SNE results
+print(f"\nt-SNE Analysis:")
+print(f"  Total heads plotted: {len(head_labels)}")
+print(f"  Induction heads: {np.sum(true_labels)}")
+print(f"  Non-induction heads: {len(true_labels) - np.sum(true_labels)}")
+
+# Calculate distances between induction and non-induction heads in t-SNE space
+induction_points = tsne_results[true_labels == 1]
+non_induction_points = tsne_results[true_labels == 0]
+
+if len(induction_points) > 0 and len(non_induction_points) > 0:
+    # Calculate average distance between groups
+    from scipy.spatial.distance import cdist
+    cross_distances = cdist(induction_points, non_induction_points, metric='euclidean')
+    avg_cross_distance = np.mean(cross_distances)
+    
+    print(f"  Average distance between induction and non-induction heads: {avg_cross_distance:.2f}")
+    
+    # Calculate within-group distances
+    if len(induction_points) > 1:
+        induction_distances = pdist(induction_points, metric='euclidean')
+        avg_induction_distance = np.mean(induction_distances)
+        print(f"  Average distance within induction heads: {avg_induction_distance:.2f}")
+    
+    if len(non_induction_points) > 1:
+        non_induction_distances = pdist(non_induction_points, metric='euclidean')
+        avg_non_induction_distance = np.mean(non_induction_distances)
+        print(f"  Average distance within non-induction heads: {avg_non_induction_distance:.2f}")
 
 # %%
 # Experiment with different parameters

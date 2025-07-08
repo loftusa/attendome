@@ -21,13 +21,13 @@ def main():
             "Qwen/Qwen3-4B",
             "Qwen/Qwen3-8B",
             "meta-llama/Llama-3.1-8B-Instruct",
-            "google/gemma-3-12b-it",
+            "meta-llama/Llama-3.2-3B-Instruct",
         ],
         help="List of model names to analyze",
     )
     parser.add_argument(
         "--output-dir", 
-        default="results/induction_heads",
+        default="data/induction_heads",
         help="Output directory for results"
     )
     parser.add_argument(

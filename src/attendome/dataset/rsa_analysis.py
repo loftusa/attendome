@@ -95,11 +95,15 @@ class AttentionMapRSA:
                 vectorized = attention_array.reshape(num_sequences, -1)
             
             elif flatten_method == "upper_triangle":
-                # Only upper triangle (without diagonal) to avoid redundancy
+                # FIXED: Use lower triangle for causal attention patterns
+                # In transformer models, attention flows from current to previous tokens
+                # So the meaningful values are in the lower triangle (including diagonal)
                 vectorized = []
                 for seq_idx in range(num_sequences):
-                    upper_tri = attention_array[seq_idx][np.triu_indices(seq_len, k=1)]
-                    vectorized.append(upper_tri)
+                    # Use lower triangle INCLUDING diagonal (k=0)
+                    # This captures the causal attention pattern where tokens attend to past positions
+                    lower_tri = attention_array[seq_idx][np.tril_indices(seq_len, k=0)]
+                    vectorized.append(lower_tri)
                 vectorized = np.array(vectorized)
             
             elif flatten_method == "diagonal":
@@ -181,19 +185,34 @@ class AttentionMapRSA:
         Returns:
             Tuple of (representation_matrix, head_labels)
         """
-        head_labels = sorted(vectorized_distance_matrices.keys())
-        representations = [vectorized_distance_matrices[head] for head in head_labels]
+        # Strip model prefixes from head labels for consistency with classified_heads
+        # Convert "model_layer_X_head_Y" to "layer_X_head_Y"
+        head_labels_cleaned = []
+        head_labels_original = sorted(vectorized_distance_matrices.keys())
+        
+        for label in head_labels_original:
+            # Split by underscore and reconstruct without model prefix
+            parts = label.split('_')
+            if len(parts) >= 4 and parts[1] == 'layer' and parts[3] == 'head':
+                # Format: model_layer_X_head_Y -> layer_X_head_Y
+                cleaned_label = f"layer_{parts[2]}_head_{parts[4]}"
+            else:
+                # Keep original if format doesn't match expected pattern
+                cleaned_label = label
+            head_labels_cleaned.append(cleaned_label)
+        
+        representations = [vectorized_distance_matrices[head] for head in head_labels_original]
         
         # Debug: Check shapes before stacking
         print(f"Debug: Vectorized distance matrix shapes:")
-        for i, (label, rep) in enumerate(zip(head_labels, representations)):
-            print(f"  {label}: {rep.shape}")
+        for i, (original, cleaned, rep) in enumerate(zip(head_labels_original, head_labels_cleaned, representations)):
+            print(f"  {original} -> {cleaned}: {rep.shape}")
             if i >= 5:  # Only show first 5
                 break
         
         representation_matrix = np.vstack(representations)
         
-        return representation_matrix, head_labels
+        return representation_matrix, head_labels_cleaned
     
     def analyze_attention_maps(
         self,
