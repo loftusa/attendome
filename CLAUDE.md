@@ -49,3 +49,5 @@ Key research goals:
 - Build classification datasets for known attention head types (induction heads, copying heads)
 - Train models to predict attention patterns from sentence embeddings
 - Measure embedding quality through attention head classification tasks
+
+

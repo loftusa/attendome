@@ -26,13 +26,12 @@ def main():
             "meta-llama/Llama-3.1-8B-Instruct",
             "mistralai/Mistral-7B-v0.1",
             "mistralai/Mixtral-8x7B-Instruct-v0.1",
-            # "google/gemma-3-12b-it",
         ],
         help="List of model names to analyze",
     )
     parser.add_argument(
         "--output-dir", 
-        default="results/induction_heads",
+        default="data/induction_heads",
         help="Output directory for results"
     )
     parser.add_argument(
