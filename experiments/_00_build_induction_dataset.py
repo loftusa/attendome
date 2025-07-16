@@ -18,10 +18,15 @@ def main():
         "--models",
         nargs="+",
         default=[
+            'allenai/OLMo-2-1124-7B',
+            'EleutherAI/pythia-6.9b',
             "Qwen/Qwen3-4B",
             "Qwen/Qwen3-8B",
+            "meta-llama/Llama-3.2-3B-Instruct",
             "meta-llama/Llama-3.1-8B-Instruct",
-            "google/gemma-3-12b-it",
+            "mistralai/Mistral-7B-v0.1",
+            "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            # "google/gemma-3-12b-it",
         ],
         help="List of model names to analyze",
     )
@@ -98,59 +103,59 @@ def main():
     for i, model_name in enumerate(args.models, 1):
         print(f"\n[{i}/{len(args.models)}] Analyzing {model_name}...")
         
-        try:
-            # Load model
-            print(f"  Loading model and tokenizer...")
-            model, tokenizer = loader.load_model(model_name)
-            
-            # Analyze model
-            print(f"  Computing induction scores...")
-            results = classifier.analyze_model(
-                model=model,
-                tokenizer=tokenizer,
-                model_name=model_name,
-                num_of_samples=args.num_samples,
-                seq_len=args.seq_len,
-                batch_size=args.batch_size
+        # try:
+        # Load model
+        print(f"  Loading model and tokenizer...")
+        model, tokenizer = loader.load_model(model_name)
+        
+        # Analyze model
+        print(f"  Computing induction scores...")
+        results = classifier.analyze_model(
+            model=model,
+            tokenizer=tokenizer,
+            model_name=model_name,
+            num_of_samples=args.num_samples,
+            seq_len=args.seq_len,
+            batch_size=args.batch_size
+        )
+        
+        # Add classification thresholds to results
+        # results.classification_thresholds = {
+        #     "high": args.high_threshold,
+        #     "medium": args.medium_threshold
+        # }
+        
+        # Re-classify with custom thresholds if different from defaults
+        if args.high_threshold != 0.5 or args.medium_threshold != 0.2:
+            results.classified_heads = classifier.classify_heads(
+                results.induction_scores,
+                high_threshold=args.high_threshold,
+                medium_threshold=args.medium_threshold
             )
+        
+        all_results.append(results)
+        
+        # Print summary if requested
+        if args.print_reports:
+            print("\n" + create_summary_report(results))
+        
+        # Save individual results if requested
+        if args.save_individual:
+            output_path = generate_output_filename(
+                model_name, 
+                args.output_dir, 
+                args.format,
+                include_timestamp=False
+            )
+            save_results(results, output_path, format=args.format)
+            print(f"  Saved individual results to: {output_path}")
+        
+        # Clear model from memory
+        loader.clear_cache(model_name)
             
-            # Add classification thresholds to results
-            results["classification_thresholds"] = {
-                "high": args.high_threshold,
-                "medium": args.medium_threshold
-            }
-            
-            # Re-classify with custom thresholds if different from defaults
-            if args.high_threshold != 0.5 or args.medium_threshold != 0.2:
-                results["classified_heads"] = classifier.classify_heads(
-                    results["induction_scores"],
-                    high_threshold=args.high_threshold,
-                    medium_threshold=args.medium_threshold
-                )
-            
-            all_results.append(results)
-            
-            # Print summary if requested
-            if args.print_reports:
-                print("\n" + create_summary_report(results))
-            
-            # Save individual results if requested
-            if args.save_individual:
-                output_path = generate_output_filename(
-                    model_name, 
-                    args.output_dir, 
-                    args.format,
-                    include_timestamp=False
-                )
-                save_results(results, output_path, format=args.format)
-                print(f"  Saved individual results to: {output_path}")
-            
-            # Clear model from memory
-            loader.clear_cache(model_name)
-            
-        except Exception as e:
-            print(f"  ERROR analyzing {model_name}: {str(e)}")
-            continue
+        # except Exception as e:
+        #     print(f"  ERROR analyzing {model_name}: {str(e)}")
+        #     continue
     
     if not all_results:
         print("\nNo models were successfully analyzed!")
@@ -185,13 +190,13 @@ def main():
     print(f"\nDataset creation complete!")
     print(f"Combined dataset saved to: {combined_path}")
     print(f"Total models analyzed: {len(all_results)}")
-    print(f"Total attention heads: {metadata['total_heads']}")
+    print(f"Total attention heads: {metadata.total_heads}")
     
     # Print overall statistics
-    total_high = sum(len(r["classified_heads"]["high_induction"]) for r in all_results)
-    total_medium = sum(len(r["classified_heads"]["medium_induction"]) for r in all_results)
-    total_low = sum(len(r["classified_heads"]["low_induction"]) for r in all_results)
-    total = metadata["total_heads"]
+    total_high = sum(len(r.classified_heads["high_induction"]) for r in all_results)
+    total_medium = sum(len(r.classified_heads["medium_induction"]) for r in all_results)
+    total_low = sum(len(r.classified_heads["low_induction"]) for r in all_results)
+    total = metadata.total_heads
     
     print(f"\nOverall Classification Results:")
     print(f"- High induction heads: {total_high} ({total_high/total*100:.1f}%)")

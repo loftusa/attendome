@@ -68,10 +68,11 @@ class ModelLoader:
         model = AutoModel.from_pretrained(
             model_name,
             torch_dtype=self.torch_dtype,
-            device_map=self.device if self.device != "cpu" else None,
+            # device_map=self.device if self.device != "cpu" else None,
+            device_map=None,
             trust_remote_code=trust_remote_code,
             **model_kwargs
-        )
+        ).cuda()
         
         if self.device == "cpu":
             model = model.to(self.device)

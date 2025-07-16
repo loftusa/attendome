@@ -28,8 +28,24 @@ def save_results(
         os.makedirs(os.path.dirname(filepath), exist_ok=True)
     
     if format == "json":
+        # with open(filepath, 'w', encoding='utf-8') as f:
+        #     json.dump(results, f, indent=2, ensure_ascii=False)
+        
+        def convert_to_dict(obj):
+            """Convert Pydantic models to dictionaries recursively."""
+            if hasattr(obj, 'model_dump'):  # Pydantic model
+                return obj.model_dump()
+            elif isinstance(obj, dict):
+                return {k: convert_to_dict(v) for k, v in obj.items()}
+            elif isinstance(obj, list):
+                return [convert_to_dict(item) for item in obj]
+            else:
+                return obj
+        serializable_results = convert_to_dict(results)
+
         with open(filepath, 'w', encoding='utf-8') as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
+            json.dump(serializable_results, f, indent=2, ensure_ascii=False)
+            
     elif format == "pickle":
         with open(filepath, 'wb') as f:
             pickle.dump(results, f)
@@ -91,10 +107,12 @@ def create_dataset_metadata(
     return DatasetMetadata(
         description=description,
         num_models=len(model_results),
-        models=[result["model_name"] for result in model_results],
+        models=[result.model_name for result in model_results],
         total_heads=sum(
-            result.get("model_config", result.get("model_configuration", {})).get("num_layers", 0) * 
-            result.get("model_config", result.get("model_configuration", {})).get("num_heads", 0)
+            # result.get("model_config", result.get("model_configuration", {})).get("num_layers", 0) * 
+            # result.get("model_config", result.get("model_configuration", {})).get("num_heads", 0)
+            result.model_configuration.get("num_layers", 0) * 
+            result.model_configuration.get("num_heads", 0)
             for result in model_results
         ),
         **kwargs
@@ -181,10 +199,10 @@ def create_summary_report(results: Union[Dict[str, Any], "AnalysisResults"]) -> 
         induction_scores = results.induction_scores
     else:
         # Dictionary format
-        model_name = results["model_name"]
+        model_name = results.model_name
         config = results.get("model_config", results.get("model_configuration", {}))
-        classified = results["classified_heads"]
-        induction_scores = results["induction_scores"]
+        classified = results.classified_heads
+        induction_scores = results.induction_scores
     
     total_heads = config["num_layers"] * config["num_heads"]
     high_count = len(classified["high_induction"])

@@ -21,8 +21,10 @@ class AnalysisResults(BaseModel):
     model_name: str
     model_configuration: Dict[str, int]  # Simple dict instead of ModelConfig
     induction_scores: List[List[float]]
+    # concept_induction_scores: List[List[float]]
     classified_heads: Dict[str, List[Dict[str, Any]]]
     analysis_params: Dict[str, Any]
+    # classification_thresholds: Dict[str, float]
 
 
 class InductionHeadClassifier:
