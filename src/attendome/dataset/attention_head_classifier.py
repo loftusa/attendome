@@ -323,7 +323,10 @@ class InductionHeadClassifier:
                 begin_index = i
                 end_index = min(i + batch_size, num_of_samples)
                 batch = random_repetitive_sequence[begin_index:end_index, :]
+                
                 input_data = {"input_ids": batch.to(self.device)}
+                # batch = batch.to(next(model.parameters()).device)
+                # input_data = {"input_ids": batch}
                 
                 result = model(**input_data, output_attentions=True)
                 
@@ -390,7 +393,8 @@ class InductionHeadClassifier:
         with torch.no_grad():
             for i in tqdm(range(0, num_sequences, batch_size), desc="Extracting attention maps"):
                 end_idx = min(i + batch_size, num_sequences)
-                batch = sequences[i:end_idx].to(self.device)
+                batch = sequences[i:end_idx].to(args.device)
+                batch = sequences[i:end_idx]
                 
                 result = model(input_ids=batch, output_attentions=True)
                 
@@ -518,8 +522,8 @@ class InductionHeadClassifier:
         Returns:
             Complete analysis results including scores and classifications
         """
-        # Move model to device
-        model = model.to(self.device)
+        # # Move model to device
+        # model = model.to(self.device)
         
         # Compute induction scores
         induction_scores = self.compute_induction_score(model, tokenizer, **kwargs)

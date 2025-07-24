@@ -60,19 +60,20 @@ class ModelLoader:
             trust_remote_code=trust_remote_code
         )
         
-        # Add padding token if missing
-        if tokenizer.pad_token is None:
-            tokenizer.pad_token = tokenizer.eos_token
+        # # Add padding token if missing
+        # if tokenizer.pad_token is None:
+        #     tokenizer.pad_token = tokenizer.eos_token
         
         # Load model
         model = AutoModel.from_pretrained(
             model_name,
-            torch_dtype=self.torch_dtype,
+            torch_dtype = torch.float32,
+            # torch_dtype=self.torch_dtype,
             # device_map=self.device if self.device != "cpu" else None,
-            device_map=None,
+            device_map="auto",
             trust_remote_code=trust_remote_code,
             **model_kwargs
-        ).cuda()
+        )
         
         if self.device == "cpu":
             model = model.to(self.device)

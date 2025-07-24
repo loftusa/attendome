@@ -18,14 +18,18 @@ def main():
         "--models",
         nargs="+",
         default=[
-            'allenai/OLMo-2-1124-7B',
-            'EleutherAI/pythia-6.9b',
-            "Qwen/Qwen3-4B",
-            "Qwen/Qwen3-8B",
-            "meta-llama/Llama-3.2-3B-Instruct",
-            "meta-llama/Llama-3.1-8B-Instruct",
-            "mistralai/Mistral-7B-v0.1",
-            "mistralai/Mixtral-8x7B-Instruct-v0.1",
+            # 'allenai/OLMo-2-1124-7B',
+            # 'EleutherAI/pythia-6.9b',
+            # "Qwen/Qwen3-4B",
+            # "Qwen/Qwen3-8B",
+            # "meta-llama/Llama-3.2-3B-Instruct",
+            # "meta-llama/Llama-3.1-8B-Instruct",
+            # 'mistralai/Mistral-7B-Instruct-v0.1',
+            # 'mistralai/Mistral-Small-24B-Instruct-2501',
+            "EleutherAI/gpt-j-6b",
+            "EleutherAI/gpt-neox-20b",
+            "meta-llama/Llama-2-7b-hf",
+            "meta-llama/Llama-2-13b-hf"
         ],
         help="List of model names to analyze",
     )
@@ -49,7 +53,7 @@ def main():
     parser.add_argument(
         "--batch-size", 
         type=int, 
-        default=16,
+        default=4,
         help="Batch size for processing"
     )
     parser.add_argument(
