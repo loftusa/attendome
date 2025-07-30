@@ -15,52 +15,136 @@ def pile_chunk(random_len, pile, tok, shuf_pile=True):
     return sample 
 
 def get_l2_attn_weights(model, tokenized, layer, value_weighting):
-    n_heads = model.config.num_attention_heads 
-    head_dim = model.config.hidden_size // n_heads
-    
     with torch.no_grad():
         with model.trace(tokenized):
-            # positional_embeddings (cos, sin) each shape [bsz, seq_len, head_dim]
-            position = model.model.layers[layer].self_attn.inputs[1]['position_embeddings']
-            attention_mask = model.model.layers[layer].self_attn.inputs[1]['attention_mask']
-
-            # [bsz, seq_len, model_size]
-            query_states = model.model.layers[layer].self_attn.q_proj.output
-            key_states = model.model.layers[layer].self_attn.k_proj.output 
-
-            bsz = query_states.shape[0]; seq_len = query_states.shape[1] 
             if value_weighting:
-                # [bsz, seq_len, model_size] -> [bsz, seq_len, n_heads, head_dim]
-                value_states = model.model.layers[layer].self_attn.v_proj.output
-                value_states = value_states.view(bsz, seq_len, n_heads, head_dim).save()
+                value_states = model.model.layers[layer].self_attn.source.past_key_value_update_0.output[1].save()
+            attn_weights = model.model.layers[layer].self_attn.source.attention_interface_0.output[1].save()
 
-            # from modeling_llama, convert to [bsz, n_heads, seq_len, head_dim] and rotate 
-            query_states = query_states.view(bsz, seq_len, -1, head_dim).transpose(1, 2)
-            key_states = key_states.view(bsz, seq_len, -1, head_dim).transpose(1, 2)
-            query_states, key_states = llama_utils.apply_rotary_pos_emb(query_states, key_states, position[0], position[1])
-
-            # not needed because num_key_value_heads == num_attention_heads 
-            # key_states = repeat_kv(key_states, self.num_key_value_groups)
-            attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(head_dim)
-            
-            # has to be eager implementation 
-            causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
-            attn_weights = attn_weights + causal_mask
-            attn_weights = attn_weights.save()
-    
     if not value_weighting:
-        return attn_weights.softmax(dim=-1).detach().cpu()
-    else: 
-        # get l2 norm of each head value vector [bsz, seq_len, n_heads] -> [bsz, n_heads, seq_len]
-        value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu().transpose(1, 2)
+        return attn_weights.detach().cpu()
+    else:
+        # get l2 norm of each head value vector [bsz, n_heads, seq_len, n_dims] -> [bsz, n_heads, seq_len]
+        value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu()
 
         # attn_weights [bsz, n_heads, seq_len, seq_len]
-        attn_weights = attn_weights.softmax(dim=-1).detach().cpu()
+        attn_weights = attn_weights.detach().cpu()
 
         # then multiply by softmax values and normalize 
         effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
         effective /= torch.sum(effective, dim=-1, keepdim=True)
-        return effective 
+        return effective
+
+def get_gptj_attn_weights(model, tokenized, layer, value_weighting):
+    with torch.no_grad():
+        with model.trace(tokenized):
+            if value_weighting:
+                value_states = model.transformer.h[layer].attn.source.layer_past_update_0.output[1].save()
+            attn_weights = model.transformer.h[layer].attn.source.self__attn_0.output[1].save()
+
+    if not value_weighting:
+        return attn_weights.detach().cpu()
+    else:
+        # get l2 norm of each head value vector [bsz, n_heads, seq_len, n_dims] -> [bsz, n_heads, seq_len]
+        value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu()
+
+        # attn_weights [bsz, n_heads, seq_len, seq_len]
+        attn_weights = attn_weights.detach().cpu()
+
+        # then multiply by softmax values and normalize 
+        effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
+        effective /= torch.sum(effective, dim=-1, keepdim=True)
+        return effective
+
+def get_qwen3_attn_weights(model, tokenized, layer, value_weighting):
+    with torch.no_grad():
+        with model.trace(tokenized):
+            if value_weighting:
+                value_states = model.model.layers[layer].self_attn.source.attention_interface_0.source.repeat_kv_1.output.save()
+            attn_weights = model.model.layers[layer].self_attn.source.attention_interface_0.output[1].save()
+
+    if not value_weighting:
+        return attn_weights.detach().cpu()
+    else:
+        # get l2 norm of each head value vector [bsz, n_heads, seq_len, n_dims] -> [bsz, n_heads, seq_len]
+        value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu()
+
+        # attn_weights [bsz, n_heads, seq_len, seq_len]
+        attn_weights = attn_weights.detach().cpu()
+
+        # then multiply by softmax values and normalize 
+        effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
+        effective /= torch.sum(effective, dim=-1, keepdim=True)
+        return effective
+
+def get_gpt_neox_attn_weights(model, tokenized, layer, value_weighting):
+    with torch.no_grad():
+        with model.trace(tokenized):
+            if value_weighting:
+                value_states = model.gpt_neox.layers[layer].attention.source.layer_past_update_0.output[1].save()
+            attn_weights = model.gpt_neox.layers[layer].attention.source.attention_interface_0.output[1].save()
+
+    if not value_weighting:
+        return attn_weights.detach().cpu()
+    else:
+        # get l2 norm of each head value vector [bsz, n_heads, seq_len, n_dims] -> [bsz, n_heads, seq_len]
+        value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu()
+
+        # attn_weights [bsz, n_heads, seq_len, seq_len]
+        attn_weights = attn_weights.detach().cpu()
+
+        # then multiply by softmax values and normalize 
+        effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
+        effective /= torch.sum(effective, dim=-1, keepdim=True)
+        return effective
+
+# def get_l2_attn_weights(model, tokenized, layer, value_weighting):
+    # n_heads = model.config.num_attention_heads 
+    # head_dim = model.config.hidden_size // n_heads
+    
+    # with torch.no_grad():
+    #     with model.trace(tokenized):
+    #         # positional_embeddings (cos, sin) each shape [bsz, seq_len, head_dim]
+    #         position = model.model.layers[layer].self_attn.inputs[1]['position_embeddings']
+    #         attention_mask = model.model.layers[layer].self_attn.inputs[1]['attention_mask']
+
+    #         # [bsz, seq_len, model_size]
+    #         query_states = model.model.layers[layer].self_attn.q_proj.output
+    #         key_states = model.model.layers[layer].self_attn.k_proj.output 
+
+    #         bsz = query_states.shape[0]; seq_len = query_states.shape[1] 
+    #         if value_weighting:
+    #             # [bsz, seq_len, model_size] -> [bsz, seq_len, n_heads, head_dim]
+    #             value_states = model.model.layers[layer].self_attn.v_proj.output
+    #             value_states = value_states.view(bsz, seq_len, n_heads, head_dim).save()
+
+    #         # from modeling_llama, convert to [bsz, n_heads, seq_len, head_dim] and rotate 
+    #         query_states = query_states.view(bsz, seq_len, -1, head_dim).transpose(1, 2)
+    #         key_states = key_states.view(bsz, seq_len, -1, head_dim).transpose(1, 2)
+    #         query_states, key_states = llama_utils.apply_rotary_pos_emb(query_states, key_states, position[0], position[1])
+
+    #         # not needed because num_key_value_heads == num_attention_heads 
+    #         # key_states = repeat_kv(key_states, self.num_key_value_groups)
+    #         attn_weights = torch.matmul(query_states, key_states.transpose(2, 3)) / math.sqrt(head_dim)
+            
+    #         # has to be eager implementation 
+    #         causal_mask = attention_mask[:, :, :, : key_states.shape[-2]]
+    #         attn_weights = attn_weights + causal_mask
+    #         attn_weights = attn_weights.save()
+    
+    # if not value_weighting:
+    #     return attn_weights.softmax(dim=-1).detach().cpu()
+    # else: 
+    #     # get l2 norm of each head value vector [bsz, seq_len, n_heads] -> [bsz, n_heads, seq_len]
+    #     value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu().transpose(1, 2)
+
+    #     # attn_weights [bsz, n_heads, seq_len, seq_len]
+    #     attn_weights = attn_weights.softmax(dim=-1).detach().cpu()
+
+    #     # then multiply by softmax values and normalize 
+    #     effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
+    #     effective /= torch.sum(effective, dim=-1, keepdim=True)
+    #     return effective 
 
 def get_l3_attn_weights(model, tokenized, layer, value_weighting):
     n_heads = model.config.num_attention_heads 
@@ -186,108 +270,107 @@ def get_qwen3_attn_weights(model, tokenized, layer, value_weighting):
         effective /= torch.sum(effective, dim=-1, keepdim=True)
         return effective
 
-
-def get_gptj_attn_weights(model, tokenized, layer, value_weighting):
-    """
-    Extract attention weights from a specific layer of GPT-J model.
+# def get_gptj_attn_weights(model, tokenized, layer, value_weighting):
+#     """
+#     Extract attention weights from a specific layer of GPT-J model.
     
-    Args:
-        model: The GPT-J model
-        tokenized: Tokenized input
-        layer: Layer index to extract attention from
-        value_weighting: Whether to apply value weighting to attention scores
+#     Args:
+#         model: The GPT-J model
+#         tokenized: Tokenized input
+#         layer: Layer index to extract attention from
+#         value_weighting: Whether to apply value weighting to attention scores
     
-    Returns:
-        Attention weights tensor
-    """
-    n_heads = model.config.num_attention_heads
-    head_dim = model.config.hidden_size // n_heads
+#     Returns:
+#         Attention weights tensor
+#     """
+#     n_heads = model.config.num_attention_heads
+#     head_dim = model.config.hidden_size // n_heads
     
-    with torch.no_grad():
-        with model.trace(tokenized):
-            # Get the attention layer
-            attn_layer = model.transformer.h[layer].attn
+#     with torch.no_grad():
+#         with model.trace(tokenized):
+#             # Get the attention layer
+#             attn_layer = model.transformer.h[layer].attn
             
-            # Get inputs - position_ids and attention_mask
-            position_ids = attn_layer.inputs[1]['position_ids']
-            attention_mask = attn_layer.inputs[1].get('attention_mask', None)
+#             # Get inputs - position_ids and attention_mask
+#             position_ids = attn_layer.inputs[1]['position_ids']
+#             attention_mask = attn_layer.inputs[1].get('attention_mask', None)
             
-            # Get Q, K, V projections
-            query_states = attn_layer.q_proj.output  # [bsz, seq_len, hidden_size]
-            key_states = attn_layer.k_proj.output    # [bsz, seq_len, hidden_size]
+#             # Get Q, K, V projections
+#             query_states = attn_layer.q_proj.output  # [bsz, seq_len, hidden_size]
+#             key_states = attn_layer.k_proj.output    # [bsz, seq_len, hidden_size]
             
-            bsz = query_states.shape[0]
-            seq_len = query_states.shape[1]
+#             bsz = query_states.shape[0]
+#             seq_len = query_states.shape[1]
             
-            if value_weighting:
-                value_states = attn_layer.v_proj.output  # [bsz, seq_len, hidden_size]
-                # Split heads for value (rotary=False for values in GPT-J)
-                value_states = value_states.view(bsz, seq_len, n_heads, head_dim)
-                value_states = value_states.permute(0, 2, 1, 3)  # [bsz, n_heads, seq_len, head_dim]
-                value_states = value_states.save()
+#             if value_weighting:
+#                 value_states = attn_layer.v_proj.output  # [bsz, seq_len, hidden_size]
+#                 # Split heads for value (rotary=False for values in GPT-J)
+#                 value_states = value_states.view(bsz, seq_len, n_heads, head_dim)
+#                 value_states = value_states.permute(0, 2, 1, 3)  # [bsz, n_heads, seq_len, head_dim]
+#                 value_states = value_states.save()
             
-            # Split heads with rotary=True for query and key
-            # From GPT-J's _split_heads method with rotary=True
-            query_states = query_states.view(bsz, seq_len, n_heads, head_dim)  # Keep original shape for rotary
-            key_states = key_states.view(bsz, seq_len, n_heads, head_dim)
+#             # Split heads with rotary=True for query and key
+#             # From GPT-J's _split_heads method with rotary=True
+#             query_states = query_states.view(bsz, seq_len, n_heads, head_dim)  # Keep original shape for rotary
+#             key_states = key_states.view(bsz, seq_len, n_heads, head_dim)
             
-            # Get sinusoidal position embeddings
-            embed_positions = attn_layer._get_embed_positions(position_ids)
-            repeated_position_ids = position_ids.unsqueeze(-1).repeat(1, 1, embed_positions.shape[-1])
-            sincos = torch.gather(embed_positions, 1, repeated_position_ids)
-            split_size = sincos.shape[-1] // 2
-            sin = sincos[..., :split_size]
-            cos = sincos[..., split_size:]
-            # sin, cos = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
+#             # Get sinusoidal position embeddings
+#             embed_positions = attn_layer._get_embed_positions(position_ids)
+#             repeated_position_ids = position_ids.unsqueeze(-1).repeat(1, 1, embed_positions.shape[-1])
+#             sincos = torch.gather(embed_positions, 1, repeated_position_ids)
+#             split_size = sincos.shape[-1] // 2
+#             sin = sincos[..., :split_size]
+#             cos = sincos[..., split_size:]
+#             # sin, cos = torch.split(sincos, sincos.shape[-1] // 2, dim=-1)
             
-            # Apply rotary position embeddings based on rotary_dim
-            if attn_layer.rotary_dim is not None:
-                # Only rotate first rotary_dim dimensions
-                k_rot = key_states[:, :, :, :attn_layer.rotary_dim]
-                k_pass = key_states[:, :, :, attn_layer.rotary_dim:]
+#             # Apply rotary position embeddings based on rotary_dim
+#             if attn_layer.rotary_dim is not None:
+#                 # Only rotate first rotary_dim dimensions
+#                 k_rot = key_states[:, :, :, :attn_layer.rotary_dim]
+#                 k_pass = key_states[:, :, :, attn_layer.rotary_dim:]
                 
-                q_rot = query_states[:, :, :, :attn_layer.rotary_dim]
-                q_pass = query_states[:, :, :, attn_layer.rotary_dim:]
+#                 q_rot = query_states[:, :, :, :attn_layer.rotary_dim]
+#                 q_pass = query_states[:, :, :, attn_layer.rotary_dim:]
                 
-                # Apply rotary embeddings to the rotary portion
-                # Note: apply_rotary_pos_emb is defined in the GPT-J module
-                k_rot = gpt_utils.apply_rotary_pos_emb(k_rot, sin, cos)
-                q_rot = gpt_utils.apply_rotary_pos_emb(q_rot, sin, cos)
+#                 # Apply rotary embeddings to the rotary portion
+#                 # Note: apply_rotary_pos_emb is defined in the GPT-J module
+#                 k_rot = gpt_utils.apply_rotary_pos_emb(k_rot, sin, cos)
+#                 q_rot = gpt_utils.apply_rotary_pos_emb(q_rot, sin, cos)
                 
-                key_states = torch.cat([k_rot, k_pass], dim=-1)
-                query_states = torch.cat([q_rot, q_pass], dim=-1)
-            else:
-                # Rotate all dimensions
-                key_states = gpt_utils.apply_rotary_pos_emb(key_states, sin, cos)
-                query_states = gpt_utils.apply_rotary_pos_emb(query_states, sin, cos)
+#                 key_states = torch.cat([k_rot, k_pass], dim=-1)
+#                 query_states = torch.cat([q_rot, q_pass], dim=-1)
+#             else:
+#                 # Rotate all dimensions
+#                 key_states = gpt_utils.apply_rotary_pos_emb(key_states, sin, cos)
+#                 query_states = gpt_utils.apply_rotary_pos_emb(query_states, sin, cos)
             
-            # Permute to [bsz, n_heads, seq_len, head_dim]
-            key_states = key_states.permute(0, 2, 1, 3)
-            query_states = query_states.permute(0, 2, 1, 3)
+#             # Permute to [bsz, n_heads, seq_len, head_dim]
+#             key_states = key_states.permute(0, 2, 1, 3)
+#             query_states = query_states.permute(0, 2, 1, 3)
             
-            # Compute attention scores
-            # Convert to float32 to avoid overflow (as done in GPT-J)
-            query_states = query_states.to(torch.float32)
-            key_states = key_states.to(torch.float32)
+#             # Compute attention scores
+#             # Convert to float32 to avoid overflow (as done in GPT-J)
+#             query_states = query_states.to(torch.float32)
+#             key_states = key_states.to(torch.float32)
             
-            attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1))
-            attn_weights = attn_weights / attn_layer.scale_attn
+#             attn_weights = torch.matmul(query_states, key_states.transpose(-2, -1))
+#             attn_weights = attn_weights / attn_layer.scale_attn
             
-            # Apply causal mask if available
-            if attention_mask is not None:
-                causal_mask = attention_mask[:, :, :, :key_states.shape[-2]]
-                attn_weights = attn_weights + causal_mask
+#             # Apply causal mask if available
+#             if attention_mask is not None:
+#                 causal_mask = attention_mask[:, :, :, :key_states.shape[-2]]
+#                 attn_weights = attn_weights + causal_mask
             
-            attn_weights = attn_weights.save()
+#             attn_weights = attn_weights.save()
     
-    if not value_weighting:
-        return attn_weights.softmax(dim=-1).detach().cpu()
-    else:
-        # Get l2 norm of each head value vector [bsz, n_heads, seq_len]
-        value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu()
-        # attn_weights [bsz, n_heads, seq_len, seq_len]
-        attn_weights = attn_weights.softmax(dim=-1).detach().cpu()
-        # Multiply by value norms and normalize
-        effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
-        effective /= torch.sum(effective, dim=-1, keepdim=True)
-        return effective
+#     if not value_weighting:
+#         return attn_weights.softmax(dim=-1).detach().cpu()
+#     else:
+#         # Get l2 norm of each head value vector [bsz, n_heads, seq_len]
+#         value_norms = torch.linalg.vector_norm(value_states, dim=-1).detach().cpu()
+#         # attn_weights [bsz, n_heads, seq_len, seq_len]
+#         attn_weights = attn_weights.softmax(dim=-1).detach().cpu()
+#         # Multiply by value norms and normalize
+#         effective = attn_weights * value_norms.unsqueeze(2).expand(attn_weights.shape)
+#         effective /= torch.sum(effective, dim=-1, keepdim=True)
+#         return effective

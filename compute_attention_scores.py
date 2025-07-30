@@ -62,13 +62,11 @@ def retrieve_attention(model, tokenized, layer, value_weighting=True):
         'Qwen/Qwen3-8B' : attn_utils.get_qwen3_attn_weights,
         'meta-llama/Llama-3.2-3B-Instruct' : attn_utils.get_l3_attn_weights,
         'meta-llama/Llama-3.1-8B-Instruct' : attn_utils.get_l3_attn_weights,
-        # 'meta-llama/Meta-Llama-3-8B' : attn_utils.get_l3_attn_weights,
+        'meta-llama/Meta-Llama-3-8B' : attn_utils.get_l3_attn_weights,
         'meta-llama/Llama-2-7b-hf': attn_utils.get_l2_attn_weights,
         'meta-llama/Llama-2-13b-hf': attn_utils.get_l2_attn_weights,
-        # 'allenai/OLMo-2-1124-7B' : attn_utils.get_olmo2_attn_weights,
-        # 'EleutherAI/pythia-6.9b' : attn_utils.get_pythia_attn_weights,
         "EleutherAI/gpt-j-6b": attn_utils.get_gptj_attn_weights,
-        # "EleutherAI/gpt-neox-20b": get_gptneox_attn_weights,
+        "EleutherAI/gpt-neox-20b": attn_utils.get_gpt_neox_attn_weights,
     }[model.config._name_or_path]
 
     return func(model, tokenized, layer, value_weighting)
@@ -93,7 +91,7 @@ random.seed(8)
 torch.manual_seed(8)
 np.random.seed(8)
 
-model = LanguageModel(args.model, device_map='auto')
+model = LanguageModel(args.model, device_map='cuda', attn_implementation='eager', torch_dtype=torch.float16)
 
 model_name = args.model.split('/')[-1]
 d = model.tokenizer.decode
@@ -148,7 +146,7 @@ if args.random_tok_entities:
             sorted_entities['fivegram'].append(doc_toks[:5])
 # load and sort entities of different token lengths
 else:
-    str_entities = list(pd.read_csv('./dataset_files/counterfact_expanded.csv')['subject'])
+    str_entities = list(pd.read_csv('./data/counterfact_expanded.csv')['subject'])
     for ent in str_entities:
         toks = tok(ent)
         if len(toks) == 2:
