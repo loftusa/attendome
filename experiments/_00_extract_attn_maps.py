@@ -4,6 +4,7 @@ Extract attention maps from transformer models using the Common Pile dataset.
 """
 
 import json
+import gc
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -60,7 +61,7 @@ def parse_args():
     parser.add_argument(
         "--dataset_name",
         type=str,
-        default="common-pile/comma_v0.1_training_dataset",
+        default="pile",
         help="Dataset name to load from HuggingFace"
     )
     
@@ -138,19 +139,20 @@ def parse_head_list(head_list_str):
 def load_dataset_samples(dataset_name, num_samples):
     """Load dataset samples."""
     from datasets import load_dataset
-    
-    dataset = load_dataset(
-        dataset_name, 
-        streaming=True,
-    )
-    
+
+    if dataset_name == 'pile':
+        dataset = load_dataset("common-pile/comma_v0.1_training_dataset", streaming=True)['train']
+    elif dataset_name == 'mini-pile':
+        dataset = load_dataset('JeanKaddour/minipile')['test']
+    else:
+        raise ValueError(f"unsupported dataset: {dataset_name}")
+
     # Convert first N examples to a list
     subset_data = []
-    for i, example in enumerate(dataset['train']):
+    for i, example in enumerate(dataset):
         if i >= num_samples:
             break
         subset_data.append(example['text'].lstrip())
-    
     return subset_data
 
 def setup_model_and_tokenizer(model_name, device):
@@ -159,14 +161,6 @@ def setup_model_and_tokenizer(model_name, device):
     
     loader = ModelLoader(device)
     model, tokenizer = loader.load_model(model_name)
-    
-    # Configure model for attention extraction
-    model.eval()
-    model.config._attn_implementation = "eager"
-    
-    # Set up tokenizer padding
-    tokenizer.pad_token = tokenizer.eos_token
-    # tokenizer.padding_side = "left"
     
     return model, tokenizer
 
@@ -257,30 +251,54 @@ def extract_attention_maps(model, tokenizer, subset_data, args):
         return attention_maps
 
 def save_attention_maps(attention_maps, model_name, args):
-    """Save attention maps to file."""
-    # Concatenate all batches for each head
-    print("Concatenating attention maps...")
-    for layer in attention_maps:
-        for head in attention_maps[layer]:
-            if args.compute_rdm:
-                attention_maps[layer][head] = np.array(attention_maps[layer][head])
-            else:# concatenating attention maps
-                attention_maps[layer][head] = torch.cat(attention_maps[layer][head], dim=0)
-                n_sample = attention_maps[layer][head].shape[0]
-                attention_maps[layer][head] = attention_maps[layer][head].reshape((n_sample, -1)).numpy()
-    
-    # Create output directory
+    """Save attention maps to file layer by layer to avoid OOM."""
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     
-    # Save to file
     if args.compute_rdm:
-        file_path = output_dir / f"rdms_{args.model_name_clean}_pile-{args.num_samples}-{args.seq_len}.pkl"
+        file_path = output_dir / f"rdms_{args.model_name_clean}_{args.dataset_name}-{args.num_samples}-{args.seq_len}.pkl"
     else:
-        file_path = output_dir / f"attn_maps_{args.model_name_clean}_pile-{args.num_samples}-{args.seq_len}.pkl"
+        file_path = output_dir / f"attn_maps_{args.model_name_clean}_{args.dataset_name}-{args.num_samples}-{args.seq_len}.pkl"
     
+    processed_maps = {}
+    
+    print("Processing attention maps layer by layer...")
+    
+    # Get list of layer keys first to avoid dictionary size change during iteration
+    layer_keys = list(attention_maps.keys())
+    
+    for layer in layer_keys:
+        print(f"Processing layer {layer}...")
+        processed_maps[layer] = {}
+        
+        # Get list of head keys first
+        head_keys = list(attention_maps[layer].keys())
+        
+        for head in head_keys:
+            if args.compute_rdm:
+                processed_maps[layer][head] = np.array(attention_maps[layer][head])
+            else:
+                # Process this head
+                concatenated = torch.cat(attention_maps[layer][head], dim=0)
+                n_sample = concatenated.shape[0]
+                processed_maps[layer][head] = concatenated.reshape((n_sample, -1)).numpy()
+                
+                # Clear the original data to free memory
+                del concatenated
+                torch.cuda.empty_cache() if torch.cuda.is_available() else None
+                gc.collect()
+            
+            # Clear the original head data
+            del attention_maps[layer][head]
+            gc.collect()
+        
+        # Clear the original layer data
+        del attention_maps[layer]
+        gc.collect()
+    
+    # Save all processed data
     with open(file_path, 'wb') as f:
-        pickle.dump(attention_maps, f)
+        pickle.dump(processed_maps, f)
     
     print(f"Attention maps saved to {file_path}")
     return file_path
@@ -305,6 +323,11 @@ def main():
     # Extract attention maps
     print("Extracting attention maps...")
     attention_maps = extract_attention_maps(model, tokenizer, subset_data, args)
+
+    # clear memory
+    del model, tokenizer, subset_data
+    torch.cuda.empty_cache() if torch.cuda.is_available() else None
+    gc.collect()
     
     # Save results
     print("Saving attention maps...")

@@ -59,10 +59,10 @@ class ModelLoader:
             model_name,
             trust_remote_code=trust_remote_code
         )
-        
-        # # Add padding token if missing
-        # if tokenizer.pad_token is None:
-        #     tokenizer.pad_token = tokenizer.eos_token
+
+        # Set up tokenizer padding
+        tokenizer.pad_token = tokenizer.eos_token
+        # tokenizer.padding_side = "left"
         
         # Load model
         model = AutoModel.from_pretrained(
@@ -70,16 +70,24 @@ class ModelLoader:
             torch_dtype = torch.float32,
             # torch_dtype=self.torch_dtype,
             # device_map=self.device if self.device != "cpu" else None,
-            device_map="auto",
+            device_map="cuda",
             trust_remote_code=trust_remote_code,
             **model_kwargs
         )
+
+        # Configure model for attention extraction
+        model.eval()
+        model.config._attn_implementation = "eager"
         
         if self.device == "cpu":
             model = model.to(self.device)
         
         if cache_model:
             self._loaded_models[model_name] = (model, tokenizer)
+
+        # import torch.nn as nn
+        # model = nn.DataParallel(model)
+        # model.layers = model.layers[:3]
         
         return model, tokenizer
     

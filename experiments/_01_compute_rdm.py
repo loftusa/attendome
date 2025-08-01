@@ -126,7 +126,8 @@ def compute_rdms(attention_maps):
             # rdm_flat = compute_rdm_fast(head_data)
             # rdm_flat = compute_rdm_einsum(head_data)
             rdm_flat = compute_rdm_fast_torch(head_data)
-            
+            if np.isnan(rdm_flat.sum()):
+                print(f"Warning! nan for layer{layer}-head{head}")
             all_rdms[layer][head] = rdm_flat    
     
     return all_rdms

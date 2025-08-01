@@ -91,7 +91,7 @@ random.seed(8)
 torch.manual_seed(8)
 np.random.seed(8)
 
-model = LanguageModel(args.model, device_map='cuda', attn_implementation='eager', torch_dtype=torch.float16)
+model = LanguageModel(args.model, device_map='auto', attn_implementation='eager')
 
 model_name = args.model.split('/')[-1]
 d = model.tokenizer.decode
